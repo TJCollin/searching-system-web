@@ -27,19 +27,33 @@ public class ConnES {
     private long end;
     private int[] amount;
     private String[] labels;
+    private long[] delay;
+    private long[] invokeTime;
+    private String chaincodeId;
+    private int totalAmout;
+    private long avarageInvokeTime;
+    private long maxInvokeTime;
+    private long minInvokeTime;
+    private long totalCheckTime;
     private String scrollUrl = "http://localhost:9200/_search/scroll";
     private String dataUrl = "http://localhost:9200/chain/code/_search?scroll=1m";
     private JSONArray temp = new JSONArray();
     private SimpleDateFormat formatter = new SimpleDateFormat("YYYY-MM-dd HH:mm:ss:SSS");
 
 
-    public JSONObject searchData (String serverId, Long startTime, Long endTime) throws IOException {
+    public JSONObject searchData (String UUID, Long startTime, Long endTime) throws IOException {
         array.clear();
         barData.clear();
-        amount = new int[6];
-        labels = new String[6];
+        amount = new int[5];
+        labels = new String[5];
+        delay = new long[5];
+        invokeTime = new long[5];
+        chaincodeId = "";
+        maxInvokeTime = 0;
+        minInvokeTime = 0;
+
         scroll_id = "";
-        String jsonData = getJsonData(serverId, startTime, endTime);
+        String jsonData = getJsonData(UUID, startTime, endTime);
 
         String rpData = sendPost(dataUrl, jsonData);
         handleResponse(rpData);
@@ -61,34 +75,82 @@ public class ConnES {
             long t3 = (long) (start + 3 * interval);
             long t4 = (long) (start + 4 * interval);
 
-            labels[0] = formatter.format(start);
-            labels[1] = formatter.format(t1);
-            labels[2] = formatter.format(t2);
-            labels[3] = formatter.format(t3);
-            labels[4] = formatter.format(t4);
-            labels[5] = formatter.format(end);
+            labels[0] = formatter.format((Math.rint(start+t1)/2)).substring(11);
+            labels[1] = formatter.format((Math.rint(t1+t2)/2)).substring(11);
+            labels[2] = formatter.format((Math.rint(t2+t3)/2)).substring(11);
+            labels[3] = formatter.format((Math.rint(t3+t4)/2)).substring(11);
+            labels[4] = formatter.format((Math.rint(t4+end)/2)).substring(11);
 
             for (int i = 0; i < array.size(); i++) {
-                long iStart = getStartTime(array.getJSONObject(i));
+                totalAmout = array.size();
+                JSONObject source = array.getJSONObject(i).getJSONObject("_source");
+                System.out.println("source"+source);
+                chaincodeId = source.getString("chaincodeId");
+                long iStart = source.getLong("startTime");
+                long delayTime = getDelayTime(source);
+                long checkTime = getCheckTime(source);
+                totalCheckTime += checkTime;
+                if (maxInvokeTime == 0 && minInvokeTime == 0) {
+                    maxInvokeTime = checkTime;
+                    minInvokeTime = checkTime;
+                } else if (checkTime < minInvokeTime) {
+                    minInvokeTime = checkTime;
+                } else if (checkTime > maxInvokeTime) {
+                    maxInvokeTime = checkTime;
+                }
                 if (iStart < t1) {
-                    amount[1]++;
+                    amount[0]++;
+                    delay[0] += delayTime;
+                    invokeTime[0] += checkTime;
                 } else if (iStart < t2) {
-                    amount[2]++;
+                    amount[1]++;
+                    delay[1] += delayTime;
+                    invokeTime[1] += checkTime;
                 } else if (iStart < t3) {
-                    amount[3]++;
+                    amount[2]++;
+                    delay[2] += delayTime;
+                    invokeTime[2] += checkTime;
                 } else if (iStart < t4) {
-                    amount[4]++;
+                    amount[3]++;
+                    delay[3] += delayTime;
+                    invokeTime[3] += checkTime;
                 } else {
-                    amount[5]++;
+                    amount[4]++;
+                    delay[4] += delayTime;
+                    invokeTime[4] += checkTime;
                 }
             }
-            barData.put("data", JSONArray.fromObject(amount));
-            barData.put("labels", JSONArray.fromObject(labels));
+            for (int j=0; j<delay.length; j++){
+                if (amount[j] != 0) {
+                    delay[j] = delay[j]/amount[j];
+                    invokeTime[j] = invokeTime[j]/amount[j];
+                }
+            }
+            avarageInvokeTime = totalCheckTime/totalAmout;
+            barData.put("data", amount);
+            barData.put("labels", labels);
+            barData.put("delay", delay);
+            barData.put("invokeTime", invokeTime);
+            barData.put("totalAmount", totalAmout);
+            barData.put("chaincodeId", chaincodeId);
+            barData.put("maxInvokeTime", maxInvokeTime);
+            barData.put("minInvokeTime", minInvokeTime);
+            barData.put("avarageInvokeTime", avarageInvokeTime);
+            barData.put("startTime", formatter.format(startTime));
+            barData.put("endTime", formatter.format(endTime));
 
             System.out.println(barData.toString());
         }
         return barData;
 
+    }
+
+    private long getCheckTime(JSONObject source) {
+        return source.getLong("checkTime") - source.getLong("startTime");
+    }
+
+    private long getDelayTime(JSONObject source) {
+        return source.getLong("endTime") - source.getLong("startTime");
     }
 
     public void handleResponse (String response) {
@@ -121,14 +183,14 @@ public class ConnES {
         return jsonObject.getJSONObject("_source").getLong("startTime");
     }
 
-    public String getJsonData (String serverId, Long startTime, Long endTime) {
+    public String getJsonData (String UUID, Long startTime, Long endTime) {
         String jsonData = "{" +
                 "\"size\": 100," +
                 "\"sort\":[{\"startTime\":\"desc\"}],"+
                 "\"query\": {" +
                 "\"bool\": {" +
                 "\"must\": [" +
-                "{\"match\": {\"serverId\":\"" + serverId    +"\"}}" +
+                "{\"match\": {\"chaincodeId\":\"" + UUID +"\"}}" +
 //                "{\"match\": {\"serverId\":\"http://202.120.167.86:7050/chaincode\"}}" +
                 "]," +
                 "\"filter\": [" +

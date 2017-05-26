@@ -4,6 +4,8 @@ import cn.collin.connES.ConnES;
 import io.vertx.core.AbstractVerticle;
 import io.vertx.core.Vertx;
 import io.vertx.core.http.HttpMethod;
+import io.vertx.core.http.HttpServer;
+import io.vertx.core.http.ServerWebSocket;
 import io.vertx.ext.web.Router;
 import io.vertx.ext.web.RoutingContext;
 import io.vertx.ext.web.handler.BodyHandler;
@@ -20,6 +22,8 @@ public class VertxWeb extends AbstractVerticle{
     private String serverId = "";
     private Long searchStart;
     private Long searchEnd;
+    private HttpServer httpServer;
+    static ServerWebSocket webSocket;
     private ConnES connES = new ConnES();
 //    private JSONObject barData = new JSONObject();
 
